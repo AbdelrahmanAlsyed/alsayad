@@ -199,6 +199,8 @@ h2.h3{font-size:17px}
 .c-now{background:var(--free)}
 .c-next{background:var(--navy)}
 .c-wk2{background:#2a6b46}
+.b-next{background:linear-gradient(135deg,#0b2e4f,#1d5a8c)}
+.gstep{font-size:15px;color:var(--fg)}
 .choices.three{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
 .choice.on{box-shadow:0 0 0 3px var(--gold)}
 .choice[aria-disabled="true"]{opacity:.55}
@@ -557,7 +559,46 @@ function sectionPage(id,tab){
     ${modeToggle()}
   </div></main>`;
 }
+let schedMode=null;
+function subHash(c){ let h1=5381,h2=2166136261; const s='alsayad:'+String(c||'').trim(); for(let i=0;i<s.length;i++){ const k=s.charCodeAt(i); h1=((h1<<5)+h1+k)>>>0; h2=Math.imul(h2^k,16777619)>>>0; } return h1.toString(16)+h2.toString(16); }
+function subOk(){ const x=lsGet('sayyad-sub',null); return !!(S.subHash && x && x.h===S.subHash); }
+function schedChoice(){
+  return `${header(true)}<main><div class="wrap">
+    <div class="ptitle"><h2>احجز موعد</h2><p class="muted small" style="margin:0">اختر نوع الحجز</p></div>
+    <div class="menu">
+      <button class="big b-next" id="ny-open"><span class="bi">${I.cal}</span><span class="bt"><b>احجز للعام القادم</b><small>سجّل اسمك ورقمك ورقم ولي الأمر والمدرسة والمنطقة</small></span></button>
+      <button class="big b-book" data-sched="sub"><span class="bi">${I.school}</span><span class="bt"><b>احجز حصة لطالب مشترك</b><small>جدول هذا الأسبوع والأسبوع القادم · يحتاج كود المشترك</small></span></button>
+    </div>
+  </div></main>`;
+}
+function gateText(){ const v=id=>(document.getElementById(id)?.value||'').trim(); return `السلام عليكم أستاذ عبدالرحمن 👋\nأنا الطالب: ${v('g-name')}\nرقمي: ${v('g-phone')}\nأرجو إرسال كود حجز الحصص للطلاب المشتركين.`; }
+function subGate(){
+  const me=lsGet('sayyad-me',{});
+  if(!S.subHash) return `${header(true,'schedule','احجز موعد')}<main><div class="wrap"><div class="ptitle"><h2>حجز حصة لطالب مشترك</h2></div><div class="empty">الحجز للطلاب المشتركين غير مفعّل حالياً. تواصل مع المعلم من «اسأل المعلم».</div></div></main>`;
+  return `${header(true,'schedule','احجز موعد')}<main><div class="wrap">
+    <div class="ptitle"><h2>حجز حصة لطالب مشترك</h2><p class="muted small" style="margin:0">الجدول متاح للطلاب المشتركين فقط. أرسل بياناتك للمعلم على واتساب ليرسل لك الكود.</p></div>
+    <div class="askbox">
+      <b class="gstep">1 · أرسل بياناتك للمعلم</b>
+      <label>الاسم الثلاثي<input id="g-name" autocomplete="name" value="${esc(me.n||'')}"></label>
+      <label>رقم الهاتف<input id="g-phone" inputmode="tel" dir="ltr" placeholder="5555 1234" value="${esc(me.p||'')}"></label>
+      <a class="btn wa big-send" id="g-send" href="${esc(waHref(S.teacherPhone,''))}" target="_blank" rel="noopener" aria-disabled="true">إرسال طلب الكود على واتساب</a>
+    </div>
+    <div class="askbox">
+      <b class="gstep">2 · أدخل الكود الذي وصلك</b>
+      <label>كود المشترك<input id="g-code" inputmode="numeric" autocomplete="one-time-code" dir="ltr" placeholder="الكود"></label>
+      <p class="err" role="alert" id="g-err">${esc(sheetErr)}</p>
+      <button class="btn book" id="g-open">فتح جدول الحجز</button>
+    </div>
+  </div></main>`;
+}
+function teacherCode(){
+  const cur=lsGet('sayyad-code',''); const shown = cur && subHash(cur)===S.subHash ? cur : '';
+  return `<div class="teacher"><h3>كود الطلاب المشتركين</h3>
+    <p class="muted small" style="margin:0">${S.subHash?(shown?'الكود الحالي: <b dir="ltr">'+esc(shown)+'</b>':'يوجد كود مُفعّل (غير محفوظ على هذا الجهاز).'):'لم يُحدَّد كود بعد، فالحجز للمشتركين مقفول.'} أرسل الكود للطالب المشترك على واتساب. عند تغيير الكود يحتاج كل الطلاب الكود الجديد.</p>
+    <form class="form" id="f-code"><input id="c-code" dir="ltr" placeholder="كود جديد، مثل 2580" required><button class="btn" type="submit">حفظ الكود</button></form></div>`;
+}
 function schedule(){
+  if(!canEdit){ if(!schedMode) return schedChoice(); if(!subOk()) return subGate(); }
   const sc=S.schedule, wid=selId(), wd=wkData(wid), cells=wkCells(wid); const todayIdx=selWk===0?new Date().getDay():-1;
   const counts={busy:0,free:0,rest:0,family:0,work:0}; Object.values(cells).forEach(v=>{ if(counts[v]!==undefined) counts[v]++; });
   const hasData = Object.keys(cells).length>0;
@@ -566,12 +607,12 @@ function schedule(){
     return `<td class="${ST[v].cls}${past?' past':''}${bk?' bookable':''}" data-cell="${di}-${si}" ${(editing||bk)?'tabindex="0" role="button"':''} ${bk?`aria-label="احجز ${esc(slotLabel(di,si,wid))}"`:''}>${ST[v].label}</td>`;}).join('')}</tr>`).join('');
   const f0=countFree(0), f1=countFree(1);
   const wkBtn=(off,cls,title,n)=>{ const has=Object.keys(wkCells(wkId(off))).length>0; return `<button class="choice ${cls}${selWk===off?' on':''}" data-book-wk="${off}" ${(n||editing)?'':'aria-disabled="true"'}><b>${title}</b><small>${wkLabel(wkId(off))}<br>${n?n+' حصة متاحة':has?'لا توجد حصص متاحة':'لم تُنشر المواعيد بعد'}</small></button>`; };
-  return `${header(true)}<main><div class="wrap ${editing?'editing':''}">
+  return `${canEdit?header(true):header(true,'schedule','احجز موعد')}<main><div class="wrap ${editing?'editing':''}">
     <div class="ptitle"><h2>احجز موعد</h2><p class="muted small" style="margin:0">الأسبوع من الجمعة إلى الخميس · من 7 صباحاً حتى 10 مساءً</p></div>
     <div class="choices three">
       ${wkBtn(0,'c-now','احجز موعد هذا الأسبوع',f0)}
       ${wkBtn(1,'c-wk2','احجز موعد الأسبوع القادم',f1)}
-      <button class="choice c-next" id="ny-open"><b>احجز موعد للعام القادم</b><small>سجّل بياناتك ليتواصل معك المعلم</small></button>
+      ${canEdit?'<button class="choice c-next" id="ny-open"><b>احجز موعد للعام القادم</b><small>سجّل بياناتك ليتواصل معك المعلم</small></button>':''}
     </div>
     <div class="wktabs" role="tablist" aria-label="اختر الأسبوع">
       ${Array.from({length:maxOff()+1},(_,o)=>`<button role="tab" data-wk="${o}" aria-selected="${selWk===o}">${esc(wkName(o))}${wkBookable(wkId(o))?'':'<i class="vo">عرض</i>'}</button>`).join('')}
@@ -582,7 +623,7 @@ function schedule(){
     <div class="legend">${['busy','free','rest','family','work'].map(k=>`<span><i class="${ST[k].cls}"></i>${ST[k].label}</span>`).join('')}</div>`:`<div class="empty">لم تُنشر مواعيد ${esc(wkName(selWk))} بعد. تابع التطبيق، أو تواصل مع المعلم من «اسأل المعلم».</div>`}
     ${hasData||editing?`<div class="tbl-box"><table class="week"><thead><tr><th class="time">الوقت</th>${dayOrder().map(i=>{ const dd=dayDate(i,wid); return `<th class="${i===todayIdx?'today':''}">${DAYS[i]}${dd?`<small>${AR_DM.format(dd)}</small>`:''}</th>`; }).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`:''}
     ${wd&&wd.note?`<div class="note">${esc(wd.note)}</div>`:''}
-    ${editing?teacherSchedule():''}
+    ${editing?teacherSchedule()+teacherCode():''}
     ${canEdit?teacherRequests()+teacherRegs():''}
     ${modeToggle()}
   </div></main>`;
@@ -718,7 +759,7 @@ function render(){
   const ov = (booking||bookingDone)?bookingSheet():(ny||nyDone)?nySheet():'';
   app.innerHTML = view + bar + ov + infoViewer();
 }
-function go(p){ page=p; openGroup=null; try{ history.replaceState(null,'','#'+p); }catch(e){} render(); window.scrollTo(0,0); }
+function go(p){ page=p; openGroup=null; if(p==='schedule') schedMode=null; try{ history.replaceState(null,'','#'+p); }catch(e){} render(); window.scrollTo(0,0); }
 function closeSheets(){ booking=null; bookingDone=null; ny=null; nyDone=null; sheetErr=''; render(); }
 
 document.addEventListener('click',e=>{
@@ -756,6 +797,18 @@ document.addEventListener('click',e=>{
   if(t.dataset.cover){ coverTarget=t.dataset.cover; const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*'; inp.onchange=async()=>{ try{ const d=await imgToData(inp.files[0]); const x=S.sheets.find(y=>y.id===coverTarget); if(x){ x.cover=d; msg=''; render(); } }catch(err){ msg='اختر صورة (JPG أو PNG) للغلاف.'; render(); } }; inp.click(); return; }
   if(t.dataset.cell){ S.weeks=S.weeks||{}; const wobj=S.weeks[selId()]||(S.weeks[selId()]={cells:{}}); delete wobj.tentative; const c=wobj.cells, k=t.dataset.cell, cur=c[k]||'none'; const nx=ORDER[(ORDER.indexOf(cur)+1)%ORDER.length]; if(nx==='none') delete c[k]; else c[k]=nx; msg=''; return render(); }
 });
+document.addEventListener('click',e=>{
+  const sm=e.target.closest('[data-sched]'); if(sm){ schedMode=sm.dataset.sched; sheetErr=''; render(); window.scrollTo(0,0); return; }
+  const gs=e.target.closest('#g-send'); if(gs){ const n=(document.getElementById('g-name').value||'').trim(), p=(document.getElementById('g-phone').value||'').trim();
+    if(n.split(/\s+/).filter(Boolean).length<3||phoneDigits(p).length<8){ e.preventDefault(); const er=document.getElementById('g-err'); if(er) er.textContent='اكتب الاسم ثلاثياً ورقم هاتف صحيح أولاً.'; return; }
+    lsSet('sayyad-me',{...lsGet('sayyad-me',{}),n,p}); gs.href=waHref(S.teacherPhone,gateText()); return; }
+  if(e.target.closest('#g-open')){ const c=(document.getElementById('g-code').value||'').trim(); const n=(document.getElementById('g-name').value||'').trim(), p=(document.getElementById('g-phone').value||'').trim();
+    if(c && subHash(c)===S.subHash){ lsSet('sayyad-sub',{h:S.subHash,n,p}); if(n||p) lsSet('sayyad-me',{...lsGet('sayyad-me',{}),...(n?{n}:{}),...(p?{p}:{})}); sheetErr=''; render(); window.scrollTo(0,0); }
+    else { const er=document.getElementById('g-err'); if(er) er.textContent='الكود غير صحيح. تأكد منه أو اطلبه من المعلم.'; }
+    return; }
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&e.target.id==='g-code'){ e.preventDefault(); document.getElementById('g-open')?.click(); } });
+document.addEventListener('input',e=>{ if(e.target.id==='g-name'||e.target.id==='g-phone'){ const a=document.getElementById('g-send'); if(a){ a.href=waHref(S.teacherPhone,gateText()); const ok=(document.getElementById('g-name').value||'').trim().split(/\s+/).filter(Boolean).length>=3&&phoneDigits(document.getElementById('g-phone').value).length>=8; a.setAttribute('aria-disabled',ok?'false':'true'); } } });
 document.addEventListener('input',e=>{ if(['ask-msg','ask-name','ask-grade'].includes(e.target.id)){ const a=document.getElementById('ask-send'); if(a){ a.href=askHref(); a.setAttribute('aria-disabled', (document.getElementById('ask-msg').value.trim()?'false':'true')); } } });
 document.addEventListener('change',e=>{ if(e.target.id==='ask-grade'){ const a=document.getElementById('ask-send'); if(a) a.href=askHref(); } });
 document.addEventListener('keydown',e=>{
@@ -786,6 +839,7 @@ document.addEventListener('submit',e=>{
     nyDone={...r,t:Date.now()}; ny=null; sheetErr=''; return render();
   }
   if(f.id==='f-sec'){ if(!v('sec-name')) return; S.sections.push({id:uid(),group:v('sec-group')||'sec',name:v('sec-name'),desc:v('sec-desc')}); }
+  if(f.id==='f-code'){ const c=v('c-code'); if(c.length<3){ msg='الكود لازم يكون 3 أحرف أو أرقام على الأقل.'; return render(); } S.subHash=subHash(c); lsSet('sayyad-code',c); msg=''; return render(); }
   if(f.id==='f-zoom'){ const u=v('z-url'); if(!okUrl(u)){ msg='رابط زووم يجب أن يبدأ بـ https://'; return render(); }
     S.zooms=S.zooms||[]; S.zooms.push({id:uid(),sectionId:f.dataset.sec,title:v('z-title'),date:v('z-date'),time:v('z-time'),dur:+v('z-dur')||60,url:u,mid:v('z-mid'),pass:v('z-pass')}); msg=''; return render(); }
   if(f.id==='f-info'){
