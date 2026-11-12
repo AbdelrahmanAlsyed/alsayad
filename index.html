@@ -222,6 +222,19 @@ h2.h3{font-size:17px}
 .hb-vid{background:linear-gradient(135deg,#0b2e4f,#1d6fb0)}
 .hb-doc{background:linear-gradient(135deg,#154d2c,#1d6b3d)}
 .hb-info{background:linear-gradient(135deg,#4a2a6e,#7a52b0)}
+.hb-zoom{background:linear-gradient(135deg,#123a7a,#2d6cdf)}
+.zm-list{display:flex;flex-direction:column;gap:10px}
+.zm-card{display:flex;gap:12px;align-items:stretch;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;min-width:0}
+.zm-card.on{border-color:#2d6cdf;box-shadow:0 0 0 2px rgba(45,108,223,.25)}
+.zm-card.past{opacity:.6}
+.zm-when{flex:0 0 78px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:var(--chip);border-radius:10px;padding:8px 4px;text-align:center;font-size:12.5px}
+.zm-when b{font-size:14px}
+.zm-when .zm-t{font-weight:700;color:var(--blue);font-variant-numeric:tabular-nums}
+.zm-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.zm-tx b{font-size:15.5px}
+.zm-st{font-size:12px;font-weight:700;color:var(--blue)}
+.zm-card.on .zm-st{color:#c0392b}
+.zm-go{align-self:flex-start;background:#2d6cdf;margin-top:4px}
 .info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
 .info-card{display:flex;flex-direction:column;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px;min-width:0}
 .info-img{border:0;padding:0;background:var(--chip);border-radius:8px;overflow:hidden;aspect-ratio:3/4;cursor:zoom-in;max-width:100%}
@@ -446,9 +459,45 @@ const SEC_TABS = [
   {k:'ch',  t:'ألعاب واختبارات تفاعلية', ic:'🏆', sub:'تحدى قدراتك'},
   {k:'vid', t:'فيديوهات الشرح', ic:'▶️', sub:'شرح الدروس على يوتيوب'},
   {k:'doc', t:'ملازم وأوراق العمل', ic:'📘', sub:'ملفات PDF على OneDrive'},
-  {k:'info',t:'صور إنفوجرافيك', ic:'🖼️', sub:'ملخصات القواعد بالصور'}
+  {k:'info',t:'صور إنفوجرافيك', ic:'🖼️', sub:'ملخصات القواعد بالصور'},
+  {k:'zoom',t:'حصص أون لاين على زووم', ic:'💻', sub:'روابط الحصص المباشرة', only:['g12','g11']}
 ];
-function secCount(id,k){ return k==='ch'?(S.challenges||[]).filter(c=>c.sectionId===id).length : k==='vid'?S.videos.filter(v=>v.sectionId===id).length : k==='doc'?S.sheets.filter(d=>d.sectionId===id).length : (S.infos||[]).filter(x=>x.sectionId===id).length; }
+function secTabs(id){ return SEC_TABS.filter(x=>!x.only||x.only.includes(id)); }
+function zEnd(z){ const d=new Date(z.date+'T'+(z.time||'00:00')); d.setMinutes(d.getMinutes()+(+z.dur||60)); return d; }
+function zStart(z){ return new Date(z.date+'T'+(z.time||'00:00')); }
+function zTime(z){ const [h,m]=String(z.time||'00:00').split(':').map(Number); const ap=h<12?'ص':'م'; return ((h%12)||12)+':'+String(m).padStart(2,'0')+' '+ap; }
+function zLive(z){ const n=Date.now(); return zStart(z).getTime()-15*60000<=n && n<zEnd(z).getTime(); }
+function zoomCard(z){
+  const live=zLive(z), past=zEnd(z).getTime()<Date.now(), d=zStart(z), url=cleanUrl(z.url);
+  return `<div class="zm-card${live?' on':''}${past?' past':''}">
+    <div class="zm-when"><b>${DAYS[d.getDay()]}</b><span>${AR_DM.format(d)}</span><span class="zm-t">${zTime(z)}</span></div>
+    <div class="zm-tx"><span class="zm-st">${live?'● الحصة الآن':past?'انتهت':'قادمة'}</span><b>${esc(z.title)}</b><span class="muted small">المدة ${+z.dur||60} دقيقة${z.mid?' · رقم الاجتماع <span dir="ltr">'+esc(z.mid)+'</span>':''}${z.pass?' · رمز الدخول <span dir="ltr">'+esc(z.pass)+'</span>':''}</span>
+      ${editing?`<button class="del" data-del="z:${z.id}">حذف</button>`:(!past&&url?`<a class="btn zm-go" href="${esc(url)}" target="_blank" rel="noopener">انضم للحصة على زووم</a>`:'')}</div>
+  </div>`;
+}
+function zoomPart(id){
+  const xs=(S.zooms||[]).filter(z=>z.sectionId===id).sort((a,b)=>zStart(a)-zStart(b));
+  const up=xs.filter(z=>zEnd(z).getTime()>=Date.now()), past=xs.filter(z=>zEnd(z).getTime()<Date.now()).reverse().slice(0,5);
+  return `<section class="blk"><div class="zm-head"><span class="muted small">${up.length} حصة قادمة</span></div>
+    ${editing?teacherZoom(id):''}
+    ${up.length?`<div class="zm-list">${up.map(zoomCard).join('')}</div>`:'<div class="empty">لا توجد حصص أون لاين قادمة الآن. تابع التطبيق، ويظهر رابط الحصة هنا قبل موعدها.</div>'}
+    ${past.length?`<div class="group"><div class="gh"><h3>حصص سابقة</h3></div><div class="zm-list">${past.map(zoomCard).join('')}</div></div>`:''}
+    <p class="muted small" style="margin:0">زر «انضم للحصة» يفتح تطبيق زووم أو المتصفح. ادخل قبل الموعد بدقائق.</p>
+  </section>`;
+}
+function teacherZoom(id){
+  const t=new Date(); const today=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+  return `<div class="teacher"><h3>إضافة حصة أون لاين</h3><form class="form" id="f-zoom" data-sec="${id}">
+    <input id="z-title" placeholder="عنوان الحصة، مثل: مراجعة النهايات" required>
+    <label class="filelbl">التاريخ<input id="z-date" type="date" value="${today}" required></label>
+    <label class="filelbl">الوقت<input id="z-time" type="time" value="19:00" required></label>
+    <label class="filelbl">المدة<select id="z-dur"><option value="45">45 دقيقة</option><option value="60" selected>ساعة</option><option value="90">ساعة ونصف</option><option value="120">ساعتان</option></select></label>
+    <input id="z-url" type="url" placeholder="رابط زووم https://zoom.us/j/…" required>
+    <input id="z-mid" placeholder="رقم الاجتماع (اختياري)" dir="ltr"><input id="z-pass" placeholder="رمز الدخول (اختياري)" dir="ltr">
+    <button class="btn" type="submit">إضافة الحصة</button></form>
+    <p class="muted small" style="margin:0">الصق رابط الدعوة من زووم. الحصة تظهر للطلاب كـ«قادمة»، وتتحوّل إلى «الحصة الآن» قبل موعدها بربع ساعة، وتنتقل إلى «حصص سابقة» بعد انتهائها. بعد الإضافة اضغط «حفظ ونشر للطلاب».</p></div>`;
+}
+function secCount(id,k){ if(k==='zoom') return (S.zooms||[]).filter(z=>z.sectionId===id&&zEnd(z).getTime()>=Date.now()).length; return k==='ch'?(S.challenges||[]).filter(c=>c.sectionId===id).length : k==='vid'?S.videos.filter(v=>v.sectionId===id).length : k==='doc'?S.sheets.filter(d=>d.sectionId===id).length : (S.infos||[]).filter(x=>x.sectionId===id).length; }
 function infoPart(id){
   const xs=(S.infos||[]).filter(x=>x.sectionId===id); const g=[...groupBy(xs,'unit')];
   return `<section class="blk"><div class="row-head"><h2 class="h3">صور إنفوجرافيك 🖼️</h2><span class="muted small">${xs.length} صورة</span></div>
@@ -495,13 +544,13 @@ function sectionPage(id,tab){
   if(s.group!=='sec'){
     return `${header(true)}<main><div class="wrap">${title}${VID()}${DOC()}${modeToggle()}</div></main>`;
   }
-  const cur=SEC_TABS.find(x=>x.k===tab);
+  const cur=secTabs(id).find(x=>x.k===tab);
   if(!cur){
     return `${header(true)}<main><div class="wrap">${title}
-      <nav class="hub" aria-label="أقسام ${esc(s.name)}">${SEC_TABS.map(x=>{ const n=secCount(id,x.k); return `<button class="hub-btn hb-${x.k}" data-go="s-${id}.${x.k}"><span class="hb-ic" aria-hidden="true">${x.ic}</span><span class="hb-tx"><b>${x.t}</b><small>${x.sub}</small></span><span class="hb-n">${n}</span></button>`; }).join('')}</nav>
+      <nav class="hub" aria-label="أقسام ${esc(s.name)}">${secTabs(id).map(x=>{ const n=secCount(id,x.k); return `<button class="hub-btn hb-${x.k}" data-go="s-${id}.${x.k}"><span class="hb-ic" aria-hidden="true">${x.ic}</span><span class="hb-tx"><b>${x.t}</b><small>${x.sub}</small></span><span class="hb-n">${n}</span></button>`; }).join('')}</nav>
       ${modeToggle()}</div></main>`;
   }
-  const body = cur.k==='ch'?CH():cur.k==='vid'?VID():cur.k==='doc'?DOC():infoPart(id);
+  const body = cur.k==='ch'?CH():cur.k==='vid'?VID():cur.k==='doc'?DOC():cur.k==='zoom'?zoomPart(id):infoPart(id);
   return `${header(true,'s-'+id,s.name)}<main><div class="wrap subpg">
     <div class="ptitle"><span class="eyebrow">${esc(s.name)}</span><h2>${cur.ic} ${cur.t}</h2></div>
     ${body}
@@ -700,6 +749,7 @@ document.addEventListener('click',e=>{
     if(k==='v') S.videos=S.videos.filter(x=>x.id!==id);
     if(k==='c') S.challenges=(S.challenges||[]).filter(x=>x.id!==id);
     if(k==='i') S.infos=(S.infos||[]).filter(x=>x.id!==id);
+    if(k==='z') S.zooms=(S.zooms||[]).filter(x=>x.id!==id);
     if(k==='d') S.sheets=S.sheets.filter(x=>x.id!==id);
     if(k==='s'){ S.sections=S.sections.filter(x=>x.id!==id); S.videos=S.videos.filter(x=>x.sectionId!==id); S.sheets=S.sheets.filter(x=>x.sectionId!==id); S.challenges=(S.challenges||[]).filter(x=>x.sectionId!==id); S.infos=(S.infos||[]).filter(x=>x.sectionId!==id); }
     msg=''; return render(); }
@@ -736,6 +786,8 @@ document.addEventListener('submit',e=>{
     nyDone={...r,t:Date.now()}; ny=null; sheetErr=''; return render();
   }
   if(f.id==='f-sec'){ if(!v('sec-name')) return; S.sections.push({id:uid(),group:v('sec-group')||'sec',name:v('sec-name'),desc:v('sec-desc')}); }
+  if(f.id==='f-zoom'){ const u=v('z-url'); if(!okUrl(u)){ msg='رابط زووم يجب أن يبدأ بـ https://'; return render(); }
+    S.zooms=S.zooms||[]; S.zooms.push({id:uid(),sectionId:f.dataset.sec,title:v('z-title'),date:v('z-date'),time:v('z-time'),dur:+v('z-dur')||60,url:u,mid:v('z-mid'),pass:v('z-pass')}); msg=''; return render(); }
   if(f.id==='f-info'){
     const files=[...(document.getElementById('i-files')?.files||[])]; if(!files.length){ msg='اختر صورة أو أكثر.'; return render(); }
     const unit=v('i-unit'), title=v('i-title'), sid=f.dataset.sec; msg='جاري تجهيز الصور…'; render();
